@@ -31,20 +31,17 @@ namespace Mirror.Weaver
                                     {
                                         if (m.Parameters[0].ParameterType != syncVar.FieldType)
                                         {
-                                            Log.Error("SyncVar Hook function " + hookFunctionName + " has wrong type signature for " + td.Name);
-                                            Weaver.fail = true;
+                                            Weaver.Error("SyncVar Hook function " + hookFunctionName + " has wrong type signature for " + td.Name);
                                             return false;
                                         }
                                         foundMethod = m;
                                         return true;
                                     }
-                                    Log.Error("SyncVar Hook function " + hookFunctionName + " must have one argument " + td.Name);
-                                    Weaver.fail = true;
+                                    Weaver.Error("SyncVar Hook function " + hookFunctionName + " must have one argument " + td.Name);
                                     return false;
                                 }
                             }
-                            Log.Error("SyncVar Hook function " + hookFunctionName + " not found for " + td.Name);
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar Hook function " + hookFunctionName + " not found for " + td.Name);
                             return false;
                         }
                     }
@@ -222,7 +219,7 @@ namespace Mirror.Weaver
             td.Methods.Add(get);
             td.Methods.Add(set);
             td.Properties.Add(propertyDefinition);
-            Weaver.lists.replacementSetterProperties[fd] = set;
+            Weaver.WeaveLists.replacementSetterProperties[fd] = set;
 
             // replace getter field if GameObject/NetworkIdentity so it uses
             // netId instead
@@ -231,7 +228,7 @@ namespace Mirror.Weaver
             if (fd.FieldType.FullName == Weaver.gameObjectType.FullName ||
                 fd.FieldType.FullName == Weaver.NetworkIdentityType.FullName)
             {
-                Weaver.lists.replacementGetterProperties[fd] = get;
+                Weaver.WeaveLists.replacementGetterProperties[fd] = get;
             }
         }
 
@@ -256,57 +253,50 @@ namespace Mirror.Weaver
 
                         if (resolvedField.IsDerivedFrom(Weaver.NetworkBehaviourType))
                         {
-                            Log.Error("SyncVar [" + fd.FullName + "] cannot be derived from NetworkBehaviour.");
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar [" + fd.FullName + "] cannot be derived from NetworkBehaviour.");
                             return;
                         }
 
                         if (resolvedField.IsDerivedFrom(Weaver.ScriptableObjectType))
                         {
-                            Log.Error("SyncVar [" + fd.FullName + "] cannot be derived from ScriptableObject.");
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar [" + fd.FullName + "] cannot be derived from ScriptableObject.");
                             return;
                         }
 
                         if ((fd.Attributes & FieldAttributes.Static) != 0)
                         {
-                            Log.Error("SyncVar [" + fd.FullName + "] cannot be static.");
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar [" + fd.FullName + "] cannot be static.");
                             return;
                         }
 
                         if (resolvedField.HasGenericParameters)
                         {
-                            Log.Error("SyncVar [" + fd.FullName + "] cannot have generic parameters.");
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar [" + fd.FullName + "] cannot have generic parameters.");
                             return;
                         }
 
                         if (resolvedField.IsInterface)
                         {
-                            Log.Error("SyncVar [" + fd.FullName + "] cannot be an interface.");
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar [" + fd.FullName + "] cannot be an interface.");
                             return;
                         }
 
                         var fieldModuleName = resolvedField.Module.Name;
-                        if (fieldModuleName != Weaver.scriptDef.MainModule.Name &&
-                            fieldModuleName != Weaver.m_UnityAssemblyDefinition.MainModule.Name &&
-                            fieldModuleName != Weaver.m_UNetAssemblyDefinition.MainModule.Name &&
-                            fieldModuleName != Weaver.corLib.Name &&
+                        if (fieldModuleName != Weaver.CurrentAssembly.MainModule.Name &&
+                            fieldModuleName != Weaver.UnityAssembly.MainModule.Name &&
+                            fieldModuleName != Weaver.NetAssembly.MainModule.Name &&
+                            fieldModuleName != Weaver.CorLibModule.Name &&
                             fieldModuleName != "System.Runtime.dll" && // this is only for Metro, built-in types are not in corlib on metro
                             fieldModuleName != "netstandard.dll" // handle built-in types when weaving new C#7 compiler assemblies
                             )
                         {
-                            Log.Error("SyncVar [" + fd.FullName + "] from " + resolvedField.Module.ToString() + " cannot be a different module.");
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar [" + fd.FullName + "] from " + resolvedField.Module.ToString() + " cannot be a different module.");
                             return;
                         }
 
                         if (fd.FieldType.IsArray)
                         {
-                            Log.Error("SyncVar [" + fd.FullName + "] cannot be an array. Use a SyncList instead.");
-                            Weaver.fail = true;
+                            Weaver.Error("SyncVar [" + fd.FullName + "] cannot be an array. Use a SyncList instead.");
                             return;
                         }
 
@@ -324,8 +314,7 @@ namespace Mirror.Weaver
 
                         if (dirtyBitCounter == k_SyncVarLimit)
                         {
-                            Log.Error("Script class [" + td.FullName + "] has too many SyncVars (" + k_SyncVarLimit + "). (This could include base classes)");
-                            Weaver.fail = true;
+                            Weaver.Error("Script class [" + td.FullName + "] has too many SyncVars (" + k_SyncVarLimit + "). (This could include base classes)");
                             return;
                         }
                         break;
@@ -334,8 +323,7 @@ namespace Mirror.Weaver
 
                 if (fd.FieldType.FullName.Contains("Mirror.SyncListStruct"))
                 {
-                    Log.Error("SyncListStruct member variable [" + fd.FullName + "] must use a dervied class, like \"class MySyncList : SyncListStruct<MyStruct> {}\".");
-                    Weaver.fail = true;
+                    Weaver.Error("SyncListStruct member variable [" + fd.FullName + "] must use a dervied class, like \"class MySyncList : SyncListStruct<MyStruct> {}\".");
                     return;
                 }
 
@@ -343,8 +331,7 @@ namespace Mirror.Weaver
                 {
                     if (fd.IsStatic)
                     {
-                        Log.Error("SyncList [" + td.FullName + ":" + fd.FullName + "] cannot be a static");
-                        Weaver.fail = true;
+                        Weaver.Error("SyncList [" + td.FullName + ":" + fd.FullName + "] cannot be a static");
                         return;
                     }
 

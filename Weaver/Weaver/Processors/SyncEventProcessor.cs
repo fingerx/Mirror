@@ -21,8 +21,7 @@ namespace Mirror.Weaver
             }
             if (eventField == null)
             {
-                Weaver.DLog(td, "ERROR: no event field?!");
-                Weaver.fail = true;
+                Weaver.Error("[" + td.Name + "] ERROR: no event field?!");
                 return null;
             }
 
@@ -51,7 +50,7 @@ namespace Mirror.Weaver
             cmdWorker.Append(cmdWorker.Create(OpCodes.Ldfld, eventField));
 
             // read the event arguments
-            MethodReference invoke = Resolvers.ResolveMethod(eventField.FieldType, Weaver.scriptDef, "Invoke");
+            MethodReference invoke = Resolvers.ResolveMethod(eventField.FieldType, Weaver.CurrentAssembly, "Invoke");
             if (!NetworkBehaviourProcessor.ProcessNetworkReaderParameters(td, invoke.Resolve(), cmdWorker, false))
                 return null;
 
@@ -66,7 +65,7 @@ namespace Mirror.Weaver
 
         public static MethodDefinition ProcessEventCall(TypeDefinition td, EventDefinition ed, CustomAttribute ca)
         {
-            MethodReference invoke = Resolvers.ResolveMethod(ed.EventType, Weaver.scriptDef, "Invoke");
+            MethodReference invoke = Resolvers.ResolveMethod(ed.EventType, Weaver.CurrentAssembly, "Invoke");
             MethodDefinition evt = new MethodDefinition("Call" +  ed.Name, MethodAttributes.Public |
                     MethodAttributes.HideBySig,
                     Weaver.voidType);
@@ -114,15 +113,13 @@ namespace Mirror.Weaver
                     {
                         if (ed.Name.Length > 4 && ed.Name.Substring(0, 5) != "Event")
                         {
-                            Log.Error("Event  [" + td.FullName + ":" + ed.FullName + "] doesnt have 'Event' prefix");
-                            Weaver.fail = true;
+                            Weaver.Error("Event  [" + td.FullName + ":" + ed.FullName + "] doesnt have 'Event' prefix");
                             return;
                         }
 
                         if (ed.EventType.Resolve().HasGenericParameters)
                         {
-                            Log.Error("Event  [" + td.FullName + ":" + ed.FullName + "] cannot have generic parameters");
-                            Weaver.fail = true;
+                            Weaver.Error("Event  [" + td.FullName + ":" + ed.FullName + "] cannot have generic parameters");
                             return;
                         }
 
@@ -141,7 +138,7 @@ namespace Mirror.Weaver
                         MethodDefinition eventCallFunc = ProcessEventCall(td, ed, ca);
                         td.Methods.Add(eventCallFunc);
 
-                        Weaver.lists.replaceEvents[ed.Name] = eventCallFunc; // original weaver compares .Name, not EventDefinition.
+                        Weaver.WeaveLists.replaceEvents[ed.Name] = eventCallFunc; // original weaver compares .Name, not EventDefinition.
 
                         Weaver.DLog(td, "  Event: " + ed.Name);
                         break;

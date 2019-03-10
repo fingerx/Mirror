@@ -110,8 +110,8 @@ Start reading our code and you'll get the hang of it. We optimize for readabilit
 * **KISS / Occam's Razor** - always use the most simple solution.
 * **No Premature Optimizations**
 	MMOs need to run for weeks without issues or exploits.
-	If you want your code to run 1% faster, spend \$100 on a better CPU.
-* **Curly Braces { }**  
+    Only do GC optimizations and caching in hot path. Avoid it everywhere else to keep the code simple.
+* **Curly Braces { }**
     Always use braces even for one line if's. Unity did this everywhere, and there is value in not accidentally missing a line in an if statement because there were no braces.
 * **Variable naming**  
     \`NetworkIdentity identity\`, not \`NetworkIdentity uv\` or similar. If the variable needs a comment the name needs to be changed. For example, `msg = ... // the message` use `message = ...` without a comment instead
@@ -119,9 +119,12 @@ Start reading our code and you'll get the hang of it. We optimize for readabilit
     Fields and methods in a class are private by default, no need to use the private keyword there.
 * This is open source software. Consider the people who will read your code, and make it look nice for them. It's sort of like driving a car: Perhaps you love doing donuts when you're alone, but with passengers the goal is to make the ride as smooth as possible.
 
-**One Python Way**
+**The Python Way**
+
 Unlike Python, C# has different ways to do the same thing, which causes endless discussions and pull requests to change from one way to the other. Let's always use the most simple, most obvious way:
   * **type** vs. **var**: always use 'int x' instead of 'var x'. Less guess work. Less magic. If we **always** use the proper type then we have to waste no brain cycles on unnecessary decision making.
   * **if** vs. **switch**: any if statement could be converted to switch and back. Again, let's not have endless discussions and use if unless _switch_ makes overwhelmingly much sense. Python doesn't have switch either, they don't have those discussions and pull requests over there.
- 
+  * **int** vs. **Int32**: use int instead of Int32, double instead of Double, string instead of String and so on. We won't convert all ints to Int32, so it makes most sense to never use Int32 anywhere and avoid time wasting discussions.
+  * **Empty Class Bodies ({} vs. { })**: please use 'class MyMessage : EmptyMessage {}' instead of 'class MyMessage : EmptyMessage { }'. For the same reason that we use no white space inbetween parameterless function defintions like void Start() vs. void Start( ).
+
 Thanks.
