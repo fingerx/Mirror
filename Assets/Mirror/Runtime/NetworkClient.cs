@@ -69,7 +69,7 @@ namespace Mirror
             connection.SetHandlers(handlers);
         }
 
-        private void InitializeTransportHandlers()
+        void InitializeTransportHandlers()
         {
             Transport.activeTransport.OnClientConnected.AddListener(OnConnected);
             Transport.activeTransport.OnClientDataReceived.AddListener(OnDataReceived);
@@ -320,19 +320,18 @@ namespace Mirror
             singleton?.Update();
         }
 
-        public void Shutdown()
+        public static void Shutdown()
         {
             if (LogFilter.Debug) Debug.Log("Shutting down client.");
             singleton = null;
             active = false;
+            ClientScene.Shutdown();
         }
 
+        [Obsolete("Call NetworkClient.Shutdown() instead. There is only one client.")]
         public static void ShutdownAll()
         {
-            singleton?.Shutdown();
-            singleton = null;
-            active = false;
-            ClientScene.Shutdown();
+            Shutdown();
         }
     }
 }
