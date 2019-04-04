@@ -6,14 +6,13 @@ namespace Mirror
 {
     public static class NetworkServer
     {
-        static ULocalConnectionToClient s_LocalConnection;
-        static bool s_Initialized;
-        static int s_MaxConnections;
+        static bool initialized;
+        static int maxConnections;
 
         // original HLAPI has .localConnections list with only m_LocalConnection in it
-        // (for downwards compatibility because they removed the real localConnections list a while ago)
-        // => removed it for easier code. use .localConection now!
-        public static NetworkConnection localConnection => s_LocalConnection;
+        // (for backwards compatibility because they removed the real localConnections list a while ago)
+        // => removed it for easier code. use .localConnection now!
+        public static NetworkConnection localConnection { get; private set; }
 
         // <connectionId, NetworkConnection>
         public static Dictionary<int, NetworkConnection> connections = new Dictionary<int, NetworkConnection>();
@@ -31,7 +30,7 @@ namespace Mirror
 
         public static void Shutdown()
         {
-            if (s_Initialized)
+            if (initialized)
             {
                 DisconnectAll();
 
@@ -49,18 +48,20 @@ namespace Mirror
                 Transport.activeTransport.OnServerDataReceived.RemoveListener(OnDataReceived);
                 Transport.activeTransport.OnServerError.RemoveListener(OnError);
 
-                s_Initialized = false;
+                initialized = false;
             }
             dontListen = false;
             active = false;
+
+            NetworkIdentity.ResetNextNetworkId();
         }
 
         static void Initialize()
         {
-            if (s_Initialized)
+            if (initialized)
                 return;
 
-            s_Initialized = true;
+            initialized = true;
             if (LogFilter.Debug) Debug.Log("NetworkServer Created version " + Version.Current);
 
             //Make sure connections are cleared in case any old connections references exist from previous sessions
@@ -79,10 +80,10 @@ namespace Mirror
             RegisterHandler<NetworkPingMessage>(NetworkTime.OnServerPing);
         }
 
-        public static bool Listen(int maxConnections)
+        public static bool Listen(int maxConns)
         {
             Initialize();
-            s_MaxConnections = maxConnections;
+            maxConnections = maxConns;
 
             // only start server if we want to listen
             if (!dontListen)
@@ -116,29 +117,25 @@ namespace Mirror
         }
 
         // called by LocalClient to add itself. dont call directly.
-        internal static int AddLocalClient(LocalClient localClient)
+        internal static void SetLocalConnection(ULocalConnectionToClient conn)
         {
-            if (s_LocalConnection != null)
+            if (localConnection != null)
             {
                 Debug.LogError("Local Connection already exists");
-                return -1;
+                return;
             }
 
-            s_LocalConnection = new ULocalConnectionToClient(localClient)
-            {
-                connectionId = 0
-            };
-            OnConnected(s_LocalConnection);
-            return 0;
+            localConnection = conn;
+            OnConnected(localConnection);
         }
 
-        internal static void RemoveLocalClient()
+        internal static void RemoveLocalConnection()
         {
-            if (s_LocalConnection != null)
+            if (localConnection != null)
             {
-                s_LocalConnection.Disconnect();
-                s_LocalConnection.Dispose();
-                s_LocalConnection = null;
+                localConnection.Disconnect();
+                localConnection.Dispose();
+                localConnection = null;
             }
             localClientActive = false;
             RemoveConnection(0);
@@ -288,7 +285,7 @@ namespace Mirror
         public static void DisconnectAll()
         {
             DisconnectAllConnections();
-            s_LocalConnection = null;
+            localConnection = null;
 
             active = false;
             localClientActive = false;
@@ -359,7 +356,7 @@ namespace Mirror
             //  less code and third party transport might not do that anyway)
             // (this way we could also send a custom 'tooFull' message later,
             //  Transport can't do that)
-            if (connections.Count < s_MaxConnections)
+            if (connections.Count < maxConnections)
             {
                 // get ip address from connection
                 string address = Transport.activeTransport.ServerGetClientAddress(connectionId);
@@ -402,13 +399,6 @@ namespace Mirror
         static void OnDisconnected(NetworkConnection conn)
         {
             conn.InvokeHandler(new DisconnectMessage());
-
-            if (conn.playerController != null)
-            {
-                //NOTE: should there be default behaviour here to destroy the associated player?
-                Debug.LogWarning("Player not destroyed when connection disconnected.");
-            }
-
             if (LogFilter.Debug) Debug.Log("Server lost client:" + conn.connectionId);
         }
 
@@ -416,7 +406,7 @@ namespace Mirror
         {
             if (connections.TryGetValue(connectionId, out NetworkConnection conn))
             {
-                OnData(conn, data);
+                conn.TransportReceive(data);
             }
             else
             {
@@ -424,15 +414,10 @@ namespace Mirror
             }
         }
 
-        private static void OnError(int connectionId, Exception exception)
+        static void OnError(int connectionId, Exception exception)
         {
             // TODO Let's discuss how we will handle errors
             Debug.LogException(exception);
-        }
-
-        static void OnData(NetworkConnection conn, byte[] data)
-        {
-            conn.TransportReceive(data);
         }
 
         static void GenerateConnectError(byte error)
@@ -675,7 +660,7 @@ namespace Mirror
                 return false;
             }
 
-            conn.SetPlayerController(identity);
+            conn.playerController = identity;
 
             // Set the connection on the NetworkIdentity on the server, NetworkIdentity.SetLocalPlayer is not called on the server (it is on clients)
             identity.connectionToClient = conn;
@@ -686,6 +671,8 @@ namespace Mirror
             // add connection to observers AFTER the playerController was set.
             // by definition, there is nothing to observe if there is no player
             // controller.
+            //
+            // IMPORTANT: do this in AddPlayerForConnection & ReplacePlayerForConnection!
             SpawnObserversForConnection(conn);
 
             if (SetupLocalPlayerForConnection(conn, identity))
@@ -722,7 +709,7 @@ namespace Mirror
                 SendSpawnMessage(identity, null);
 
                 // Set up local player instance on the client instance and update local object map
-                localConnection.localClient.AddLocalPlayer(identity);
+                NetworkClient.AddLocalPlayer(identity);
                 identity.SetClientOwner(conn);
 
                 // Trigger OnAuthority
@@ -770,12 +757,19 @@ namespace Mirror
                 conn.playerController.clientAuthorityOwner = null;
             }
 
-            conn.SetPlayerController(playerNetworkIdentity);
+            conn.playerController = playerNetworkIdentity;
 
             // Set the connection on the NetworkIdentity on the server, NetworkIdentity.SetLocalPlayer is not called on the server (it is on clients)
             playerNetworkIdentity.connectionToClient = conn;
 
             //NOTE: DONT set connection ready.
+
+            // add connection to observers AFTER the playerController was set.
+            // by definition, there is nothing to observe if there is no player
+            // controller.
+            //
+            // IMPORTANT: do this in AddPlayerForConnection & ReplacePlayerForConnection!
+            SpawnObserversForConnection(conn);
 
             if (LogFilter.Debug) Debug.Log("NetworkServer ReplacePlayer setup local");
 
@@ -868,7 +862,7 @@ namespace Mirror
             if (conn.playerController != null)
             {
                 Destroy(conn.playerController.gameObject);
-                conn.RemovePlayerController();
+                conn.playerController = null;
             }
             else
             {
@@ -1008,9 +1002,8 @@ namespace Mirror
             if (conn.playerController != null)
             {
                 DestroyObject(conn.playerController, true);
+                conn.playerController = null;
             }
-
-            conn.RemovePlayerController();
         }
 
         public static void Spawn(GameObject obj)

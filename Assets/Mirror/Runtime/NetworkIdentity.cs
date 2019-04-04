@@ -127,6 +127,7 @@ namespace Mirror
 
         static uint s_NextNetworkId = 1;
         internal static uint GetNextNetworkId() => s_NextNetworkId++;
+        public static void ResetNextNetworkId() => s_NextNetworkId = 1;
 
         public delegate void ClientAuthorityCallback(NetworkConnection conn, NetworkIdentity identity, bool authorityState);
         public static ClientAuthorityCallback clientAuthorityCallback;
@@ -357,6 +358,12 @@ namespace Mirror
 
         void OnDestroy()
         {
+            // remove from sceneIds
+            // -> remove with (0xFFFFFFFFFFFFFFFF) and without (0x00000000FFFFFFFF)
+            //    sceneHash to be 100% safe.
+            sceneIds.Remove(sceneId);
+            sceneIds.Remove(sceneId & 0x00000000FFFFFFFF);
+
             if (m_IsServer && NetworkServer.active)
             {
                 NetworkServer.Destroy(gameObject);
@@ -437,7 +444,7 @@ namespace Mirror
             }
         }
 
-        internal void OnStartAuthority()
+        void OnStartAuthority()
         {
             if (m_NetworkBehaviours == null)
             {
@@ -458,7 +465,7 @@ namespace Mirror
             }
         }
 
-        internal void OnStopAuthority()
+        void OnStopAuthority()
         {
             foreach (NetworkBehaviour comp in NetworkBehaviours)
             {
@@ -510,7 +517,7 @@ namespace Mirror
         // -> OnDeserialize carefully extracts each data, then deserializes each component with separate readers
         //    -> it will be impossible to read too many or too few bytes in OnDeserialize
         //    -> we can properly track down errors
-        internal bool OnSerializeSafely(NetworkBehaviour comp, NetworkWriter writer, bool initialState)
+        bool OnSerializeSafely(NetworkBehaviour comp, NetworkWriter writer, bool initialState)
         {
             // write placeholder length bytes
             // (jumping back later is WAY faster than allocating a temporary
@@ -588,7 +595,7 @@ namespace Mirror
             return onSerializeWriter.ToArray();
         }
 
-        private ulong GetDirtyMask(NetworkBehaviour[] components, bool initialState)
+        ulong GetDirtyMask(NetworkBehaviour[] components, bool initialState)
         {
             // loop through all components only once and then write dirty+payload into the writer afterwards
             ulong dirtyComponentsMask = 0L;
@@ -604,7 +611,7 @@ namespace Mirror
             return dirtyComponentsMask;
         }
 
-        internal void OnDeserializeSafely(NetworkBehaviour comp, NetworkReader reader, bool initialState)
+        void OnDeserializeSafely(NetworkBehaviour comp, NetworkReader reader, bool initialState)
         {
             // read header as 4 bytes
             int contentSize = reader.ReadInt32();
@@ -633,7 +640,7 @@ namespace Mirror
             }
         }
 
-        internal void OnDeserializeAllSafely(NetworkBehaviour[] components, NetworkReader reader, bool initialState)
+        void OnDeserializeAllSafely(NetworkBehaviour[] components, NetworkReader reader, bool initialState)
         {
             // read component dirty mask
             ulong dirtyComponentsMask = reader.ReadPackedUInt64();
@@ -663,7 +670,7 @@ namespace Mirror
         }
 
         // helper function to handle SyncEvent/Command/Rpc
-        internal void HandleRemoteCall(int componentIndex, int functionHash, MirrorInvokeType invokeType, NetworkReader reader)
+        void HandleRemoteCall(int componentIndex, int functionHash, MirrorInvokeType invokeType, NetworkReader reader)
         {
             if (gameObject == null)
             {
@@ -782,7 +789,7 @@ namespace Mirror
             conn.AddToVisList(this);
         }
 
-        internal void RemoveObserver(NetworkConnection conn)
+        void RemoveObserver(NetworkConnection conn)
         {
             if (observers == null)
                 return;
@@ -798,16 +805,28 @@ namespace Mirror
 
             bool changed = false;
             bool result = false;
-            HashSet<NetworkConnection> newObservers = new HashSet<NetworkConnection>();
             HashSet<NetworkConnection> oldObservers = new HashSet<NetworkConnection>(observers.Values);
+            HashSet<NetworkConnection> newObservers = new HashSet<NetworkConnection>();
 
+            // call OnRebuildObservers function in components
             foreach (NetworkBehaviour comp in NetworkBehaviours)
             {
                 result |= comp.OnRebuildObservers(newObservers, initialize);
             }
+
+            // if player connection: ensure player always see himself no matter what.
+            // -> fixes https://github.com/vis2k/Mirror/issues/692 where a
+            //    player might teleport out of the ProximityChecker's cast,
+            //    losing the own connection as observer.
+            if (connectionToClient != null && connectionToClient.isReady)
+            {
+                newObservers.Add(connectionToClient);
+            }
+
+            // if no component implemented OnRebuildObservers, then add all
+            // connections.
             if (!result)
             {
-                // none of the behaviours rebuilt our observers, use built-in rebuild method
                 if (initialize)
                 {
                     foreach (NetworkConnection conn in NetworkServer.connections.Values)
@@ -834,7 +853,7 @@ namespace Mirror
 
                 if (!conn.isReady)
                 {
-                    Debug.LogWarning("Observer is not ready for " + gameObject + " " + conn);
+                    if (LogFilter.Debug) Debug.Log("Observer is not ready for " + gameObject + " " + conn);
                     continue;
                 }
 
