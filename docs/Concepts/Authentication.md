@@ -49,7 +49,7 @@ class MyGameNetworkManager : NetworkManager {
             password = "Gaba Gaba"
         };
 
-        ClientScene.AddPlayer(connection,   MessagePacker.Pack(msg));
+        ClientScene.AddPlayer(conn, MessagePacker.Pack(msg));
     }
 
     // this gets called in your server when the 
@@ -72,3 +72,7 @@ class MyGameNetworkManager : NetworkManager {
 }
 
 ```
+
+## Warning
+
+By default Mirror uses Telepathy,  which is not encrypted.  The above code sample works,  but if you want to do authentication through Mirror,  we highly recommend you use a transport that supports encryption. 

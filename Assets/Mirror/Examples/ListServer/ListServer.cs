@@ -1,7 +1,8 @@
-﻿// add this component to the NetworkManager
+// add this component to the NetworkManager
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -17,8 +18,9 @@ namespace Mirror.Examples.ListServer
         public ushort capacity;
 
         public int lastLatency = -1;
+#if !UNITY_WEBGL // Ping isn't known in WebGL builds
         public Ping ping;
-
+#endif
         public ServerStatus(string ip, /*ushort port,*/ string title, ushort players, ushort capacity)
         {
             this.ip = ip;
@@ -26,7 +28,9 @@ namespace Mirror.Examples.ListServer
             this.title = title;
             this.players = players;
             this.capacity = capacity;
+#if !UNITY_WEBGL // Ping isn't known in WebGL builds
             ping = new Ping(ip);
+#endif
         }
     }
 
@@ -45,6 +49,7 @@ namespace Mirror.Examples.ListServer
         [Header("UI")]
         public GameObject mainPanel;
         public Transform content;
+        public Text statusText;
         public UIServerStatusSlot slotPrefab;
         public Button serverAndPlayButton;
         public Button serverOnlyButton;
@@ -79,7 +84,7 @@ namespace Mirror.Examples.ListServer
         // should we use the client to listen connection?
         bool UseClientToListen()
         {
-            return !NetworkManager.IsHeadless() && !NetworkServer.active && !FullyConnected();
+            return !NetworkManager.isHeadless && !NetworkServer.active && !FullyConnected();
         }
 
         // should we use the game server to listen connection?
@@ -100,17 +105,20 @@ namespace Mirror.Examples.ListServer
             BinaryWriter writer = new BinaryWriter(new MemoryStream());
 
             // create message
-            // NOTE: you can send anything that you want, as long as you also
-            //       receive it in ParseMessage
-            char[] titleChars = gameServerTitle.ToCharArray();
-            writer.Write((ushort)titleChars.Length);
-            writer.Write(titleChars);
             writer.Write((ushort)NetworkServer.connections.Count);
             writer.Write((ushort)NetworkManager.singleton.maxConnections);
-
-            // send it
+            byte[] titleBytes = Encoding.UTF8.GetBytes(gameServerTitle);
+            writer.Write((ushort)titleBytes.Length);
+            writer.Write(titleBytes);
             writer.Flush();
-            gameServerToListenConnection.Send(((MemoryStream)writer.BaseStream).ToArray());
+
+            // list server only allows up to 128 bytes per message
+            if (writer.BaseStream.Position <= 128)
+            {
+                // send it
+                gameServerToListenConnection.Send(((MemoryStream)writer.BaseStream).ToArray());
+            }
+            else Debug.LogError("[List Server] List Server will reject messages longer than 128 bytes. Please use a shorter title.");
         }
 
         void TickGameServer()
@@ -140,25 +148,24 @@ namespace Mirror.Examples.ListServer
 
         void ParseMessage(byte[] bytes)
         {
-            // use binary reader because our NetworkReader uses custom string reading with bools
-            // => we don't use ReadString here because the listen server doesn't
-            //    know C#'s '7-bit-length + utf8' encoding for strings
+            // note: we don't use ReadString here because the list server
+            //       doesn't know C#'s '7-bit-length + utf8' encoding for strings
             BinaryReader reader = new BinaryReader(new MemoryStream(bytes, false), Encoding.UTF8);
-            ushort ipLength = reader.ReadUInt16();
-            string ip = new string(reader.ReadChars(ipLength));
+            byte ipBytesLength = reader.ReadByte();
+            byte[] ipBytes = reader.ReadBytes(ipBytesLength);
+            string ip = new IPAddress(ipBytes).ToString();
             //ushort port = reader.ReadUInt16(); <- not all Transports use a port. assume default.
-            ushort titleLength = reader.ReadUInt16();
-            string title = new string(reader.ReadChars(titleLength));
             ushort players = reader.ReadUInt16();
             ushort capacity = reader.ReadUInt16();
-            //Debug.Log("PARSED: ip=" + ip + /*" port=" + port +*/ " title=" + title + " players=" + players + " capacity= " + capacity);
+            ushort titleLength = reader.ReadUInt16();
+            string title = Encoding.UTF8.GetString(reader.ReadBytes(titleLength));
+            //Debug.Log("PARSED: ip=" + ip + /*" port=" + port +*/ " players=" + players + " capacity= " + capacity + " title=" + title);
 
             // build key
             string key = ip/* + ":" + port*/;
 
             // find existing or create new one
-            ServerStatus server;
-            if (list.TryGetValue(key, out server))
+            if (list.TryGetValue(key, out ServerStatus server))
             {
                 // refresh
                 server.title = title;
@@ -197,6 +204,7 @@ namespace Mirror.Examples.ListServer
                             Debug.Log("[List Server] Client disconnected.");
                     }
 
+#if !UNITY_WEBGL // Ping isn't known in WebGL builds
                     // ping again if previous ping finished
                     foreach (ServerStatus server in list.Values)
                     {
@@ -206,6 +214,7 @@ namespace Mirror.Examples.ListServer
                             server.ping = new Ping(server.ip);
                         }
                     }
+#endif
                 }
                 // otherwise try to connect
                 // (we may have just joined the menu/disconnect from game server)
@@ -248,6 +257,23 @@ namespace Mirror.Examples.ListServer
             if (!NetworkManager.singleton.isNetworkActive || IsConnecting())
             {
                 mainPanel.SetActive(true);
+
+                // status text
+                if (clientToListenConnection.Connecting)
+                {
+                    //statusText.color = Color.yellow;
+                    statusText.text = "Connecting...";
+                }
+                else if (clientToListenConnection.Connected)
+                {
+                    //statusText.color = Color.green;
+                    statusText.text = "Connected!";
+                }
+                else
+                {
+                    //statusText.color = Color.gray;
+                    statusText.text = "Disconnected";
+                }
 
                 // instantiate/destroy enough slots
                 BalancePrefabs(slotPrefab.gameObject, list.Count, content);

@@ -1,8 +1,49 @@
 # Change Log
 
-## Version 1.7 -- In Progress
+## Version 3.x.x
 
-- Added: Semantic Versioning
+- Added: Scene Message now supports params for SceneMode (Normal / Additive) and PhysicsMode (2D / 3D)
+- Fixed: ListServer Ping not found in WebGL
+
+## Version 3.6.7 -- 2019-Apr-28
+
+- Changed: NetworkReader now uses ArraySegment<byte> to minimize allocations.
+
+## Version 3.6.6 -- 2019-Apr-24
+
+- Fixed: Reverted two internal refactor commits that had unintended consequences.
+
+## Version 3.6.5 -- 2019-Apr-23
+
+- Fixed: Unity 2019.1 compatibility
+- Fixed: Erroneous error indicating prefabs were missing Scene ID's
+- Fixed: OnDeserializeSafely now works without allocations
+- Fixed: Weaver not writing symbol files, preventing breakpoints from working in Visual Studio
+- Fixed: NetworkIdentity SceneID generation now uses RNG Crypto Service Provider 
+- Fixed: Scene lighting in Additive example
+- Fixed: Player Prefab transform details now respected when instantiated in the absence of NetworkStartPosition
+- Removed: Tests folder from Unity package generation (no end-user value)
+
+## Version 3.5.9 -- 2019-Apr-12
+
+- Fixed: NetworkManager round-robin mode using NetworkStartPosition objects now uses hierarchy sibling order.
+- Fixed: IsLocalPlayer is now reliably accurate in `Start()` by combining OwnerMessage and SpawnPrefabMessage
+- Fixed: Stack overflow issues with Weaver and Cecil
+- Fixed: Corrected assembly paths passed to weaver
+- Fixed: Enum bandwdith reduced in SyncVars, Commands, and Rpcs
+- Fixed: Placeholder files added for removed code files so updating works better
+- Changed: NetworkManager `isHeadless` is a static property now, changed from `IsHeadless()`.
+
+## Version 3.5.3 -- 2019-Apr-10
+
+- Fixed: Exceptions in overrides of Network Manager and other components incorrectly silenced.
+- Fixed: Lobby system sometimes would not spawn and swap game player prefabs into the game scene
+- Fixed: Application.targetFrameRate no longer set in host mode
+- Changed: Telepathy: Split MaxMessageSize to allow setting a different value for client and server
+
+## Version 3.4.9 -- 2019-Apr-6
+
+- Added: Semantic Versioning (which is why we jumped from 1.6 to 3.4.9)
 - Added: [SyncDictionary](../Classes/SyncDictionary)
 - Added: [SyncHashSet](../Classes/SyncHashSet)
 - Added: [SyncSortedSet](../Classes/SyncSortedSet)
@@ -74,7 +115,6 @@
 - Removed: NetworkServer.hostId and NetworkConnection.hostId (holdovers from LLAPI)
 - Removed: NetworkConnection.isConnected (NetworkConnection is always connected)
 - Removed: Transport.GetConnectionInfo (Use ServerGetClientAddress instead)
-
 
 ## Version 1.4 -- 2019-Feb-01
 
